@@ -25,12 +25,12 @@ async def send_start_message(message: types.Message):
 @dp.callback_query_handler() #узнать, есть ли фото в сообщении
 async def with_photo_callback(callback: types.CallbackQuery):
     if callback.data == 'with_photo':
-        await bot.send_message(callback.from_user.id, 'Ты выбрал сообщение с фото')
-        await bot.send_message(callback.from_user.id, 'Пришли текст своего сообщения')
+        await callback.message.edit_text(text = 'Пришли текст своего сообщения')
+        # await bot.send_message(callback.from_user.id, 'Ты выбрал сообщение с фото') это прислать новое сообщение, пусть будет на всякий 
+        # await bot.send_message(callback.from_user.id, 'Пришли текст своего сообщения') 
 
     else:
-        await bot.send_message(callback.from_user.id, 'Ты выбрал только текст')
-        await bot.send_message(callback.from_user.id, 'Пришли текст своего сообщения')
+        await callback.message.edit_text(text = 'Пришли текст своего сообщения')
         
 
 @dp.message_handler(commands = ['help']) #функция для хелпа (пока хз зачем)
