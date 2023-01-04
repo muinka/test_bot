@@ -20,6 +20,12 @@ class MessageInfo(StatesGroup): #состояние данных пользов�
     fill_photo = State()
     fill_mail = State()
 
+async def set_main_menu(dp: Dispatcher):
+    main_menu_commands = [
+        types.BotCommand(command='/start', description='Начало'),
+        types.BotCommand(command='/help', description='Помощь')
+    ]
+    await dp.bot.set_my_commands(main_menu_commands)
 
 @dp.message_handler(commands = ['start']) #функция старта
 async def send_start_message(message: types.Message):
@@ -44,21 +50,21 @@ async def get_user_name(callback: types.CallbackQuery):
             await callback.message.edit_text(text = 'Отправь мне фотографию')
             await MessageInfo.fill_photo.set()
 
-@dp.message_handler(state = MessageInfo.fill_name)
+@dp.message_handler(state = MessageInfo.fill_name) #получение и обработка имени
 async def get_user_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
     await message.answer(text='Спасибо!\n\nА теперь введи текст')
     await MessageInfo.fill_message.set()
 
-@dp.message_handler(state = MessageInfo.fill_message)
+@dp.message_handler(state = MessageInfo.fill_message) #получение и обработка текста
 async def get_user_message(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['message'] = message.text
     await message.answer(text='Супер!\n\nОтправляй почту')
     await MessageInfo.fill_mail.set()
 
-@dp.message_handler(state = MessageInfo.fill_mail)
+@dp.message_handler(state = MessageInfo.fill_mail) #получение и обработка почты
 async def get_user_message(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['mail'] = message.text
@@ -78,7 +84,6 @@ async def get_user_message(message: types.Message, state: FSMContext):
         # await bot.send_message(callback.from_user.id, 'Пришли текст своего сообщения') 
     # else:
     #     await callback.message.edit_text(text = 'Пришли текст своего сообщения')
-        
 
 @dp.message_handler(commands = ['help']) #функция для хелпа (пока хз зачем)
 async def send_help_message(message: types.Message):
@@ -87,7 +92,7 @@ async def send_help_message(message: types.Message):
     user_id = message.from_user.id
     await bot.send_message(user_id, message)
 
-@dp.message_handler(content_types = ['photo'], state = MessageInfo.fill_photo) #функция дли сохранения фотки (сделаю потом)
+@dp.message_handler(content_types = ['photo'], state = MessageInfo.fill_photo) #функция дли обработки фоток
 async def get_user_photo(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     photo_id = message.photo[2].file_id
@@ -109,4 +114,4 @@ async def get_text(message: types.Message):
     await bot.send_message(message.from_user.id, 'Выбери команду, которая тебе нужна')
 
 if __name__ == '__main__':
-    executor.start_polling(dp)
+    executor.start_polling(dp, skip_updates=True, on_startup=set_main_menu)
