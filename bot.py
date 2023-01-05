@@ -1,5 +1,6 @@
 import time
 import logging
+import re
 
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
@@ -20,23 +21,32 @@ class MessageInfo(StatesGroup): #состояние данных пользов�
     fill_photo = State()
     fill_mail = State()
 
+regex = re.compile(r'([A-Za-z0-9]+[.-_])*[A-Za-z0-9]+@[A-Za-z0-9-]+(\.[A-Z|a-z]{2,})+')
+def isValid(email):
+    if re.fullmatch(regex, email):
+      return True
+    else:
+      return False
+
 async def set_main_menu(dp: Dispatcher):
     main_menu_commands = [
-        types.BotCommand(command='/start', description='Начало'),
+        types.BotCommand(command='/send', description='Вернуться в начало'),
         types.BotCommand(command='/help', description='Помощь')
     ]
     await dp.bot.set_my_commands(main_menu_commands)
 
-@dp.message_handler(commands = ['start']) #функция старта
+@dp.message_handler(commands = ['start']) #приветствие пользователя
 async def send_start_message(message: types.Message):
-    print(message)
     name = message.from_user.first_name
     user_id = message.from_user.id
-    await bot.send_message(user_id, f'Привет, <u>{name}</u>',parse_mode='html')
+    await bot.send_message(user_id, f'Привет, {name}\n\nЧтобы начать работу, введи /send')
+
+@dp.message_handler(commands = ['send']) #начало заполнения анкеты
+async def send_start_message(message: types.Message):
     keyboard: InlineKeyboardMarkup = InlineKeyboardMarkup()
     button_1: InlineKeyboardButton = InlineKeyboardButton(text="Поехали", callback_data = 'first_step')
     keyboard.add(button_1)
-    await bot.send_message(user_id, 'Я умею отправлять сообщения на почту, начнем?', reply_markup=keyboard)
+    await message.answer(text = 'Я умею отправлять сообщения на почту, начнем?', reply_markup=keyboard)
 
 @dp.callback_query_handler() #хэндлер, переводящий в состояние ожидания имени
 async def get_user_name(callback: types.CallbackQuery):
@@ -45,12 +55,12 @@ async def get_user_name(callback: types.CallbackQuery):
             await callback.message.edit_text(text = 'Напиши имя отправителя')
             await MessageInfo.fill_name.set()
         case 'photo_no':  #добавить config с строками
-            await callback.message.edit_text(text = 'Сообщение отправлено, приходи еще ♥')
+            await callback.message.edit_text(text = 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
         case 'photo_yes':
             await callback.message.edit_text(text = 'Отправь мне фотографию')
             await MessageInfo.fill_photo.set()
 
-@dp.message_handler(state = MessageInfo.fill_name) #получение и обработка имени
+@dp.message_handler(lambda message: message.text.isalpha() and len(message.text)>1, state = MessageInfo.fill_name) #получение и обработка имени
 async def get_user_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
@@ -64,7 +74,7 @@ async def get_user_message(message: types.Message, state: FSMContext):
     await message.answer(text='Супер!\n\nОтправляй почту')
     await MessageInfo.fill_mail.set()
 
-@dp.message_handler(state = MessageInfo.fill_mail) #получение и обработка почты
+@dp.message_handler(lambda message: isValid(message.text), state = MessageInfo.fill_mail) #получение и обработка почты
 async def get_user_message(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['mail'] = message.text
@@ -75,22 +85,12 @@ async def get_user_message(message: types.Message, state: FSMContext):
     skeyboard.add(sbutton_1, sbutton_2)
     await message.answer(text='Сделано!\n\nНужно ли отправить фотографию?', reply_markup=skeyboard)
 
-# @dp.callback_query_handler() #узнать, есть ли фото в сообщении  ПОКА НЕ НУЖНО (МОЖЕТ И ИЗНАЧАЛЬНО НЕ НУЖНО БЫЛО)
-# async def with_photo_callback(callback: types.CallbackQuery):
-#     if callback.data == 'with_photo':
-#         await callback.message.edit_text(text = 'Напиши имя отправителя')
-#         await MessageInfo.fill_message.set()
-        # await bot.send_message(callback.from_user.id, 'Ты выбрал сообщение с фото') это прислать новое сообщение, пусть будет на всякий 
-        # await bot.send_message(callback.from_user.id, 'Пришли текст своего сообщения') 
-    # else:
-    #     await callback.message.edit_text(text = 'Пришли текст своего сообщения')
-
 @dp.message_handler(commands = ['help']) #функция для хелпа (пока хз зачем)
 async def send_help_message(message: types.Message):
     print(message)   
     name = message.from_user.first_name
     user_id = message.from_user.id
-    await bot.send_message(user_id, message)
+    await bot.send_message(user_id, 'пока ничем помочь не могу')
 
 @dp.message_handler(content_types = ['photo'], state = MessageInfo.fill_photo) #функция дли обработки фоток
 async def get_user_photo(message: types.Message, state: FSMContext):
@@ -103,14 +103,26 @@ async def get_user_photo(message: types.Message, state: FSMContext):
         photo = open('photo.jpg', 'rb')
         #await bot.send_photo(user_id, photo) для теста, получается ли фотка нормально
         await bot.send_message(user_id, 'Фото получено, сообщение отправлено')
+        await bot.send_message(user_id, 'Чтобы вернуться в начало, введи /send')
         await state.finish()
     except Exception as error:
         print(str(error))
 
-@dp.message_handler(content_types = ['text'])
+@dp.message_handler(lambda message: not message.photo, state = MessageInfo.fill_photo) #проверка фотографии
+async def check_photo(message: types.Message):
+    await message.reply(text = 'Это не фотография, пришли фотографию')
+
+@dp.message_handler(content_types='any', state = MessageInfo.fill_name) #проверка имени
+async def check_name(message: types.Message):
+    await message.reply(text = 'Что-то не похоже на имя')
+
+@dp.message_handler(state = MessageInfo.fill_mail) #проверка почты
+async def check_name(message: types.Message):
+    await message.reply(text = 'Почта введена некорректно')
+
+@dp.message_handler(content_types = ['any'])
 async def get_text(message: types.Message):
     text = message.text
-    print(text)
     await bot.send_message(message.from_user.id, 'Выбери команду, которая тебе нужна')
 
 if __name__ == '__main__':
