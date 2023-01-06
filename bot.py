@@ -1,12 +1,11 @@
 import re
+import asyncio
 
 from aiogram import Bot, Dispatcher, executor, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
 from aiogram.contrib.fsm_storage.memory import MemoryStorage
 from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher import FSMContext
-
-import mail_checking
 
 TOKEN = '5630269099:AAGYTYb8FCm_7e1nGGG6_v83FHlrUug87yU'
 
@@ -32,7 +31,7 @@ async def set_main_menu(dp: Dispatcher):
     main_menu_commands = [
         types.BotCommand(command ='/send', description = 'Вернуться в начало'),
         types.BotCommand(command ='/help', description = 'Помощь'),
-        types.BotCommand(command = '/cancel', description = 'Отменить заполнение' )
+        types.BotCommand(command = '/cancel', description = 'Завершить заполнение' )
     ]
     await dp.bot.set_my_commands(main_menu_commands)
 
@@ -65,15 +64,26 @@ async def get_callback(callback: types.CallbackQuery):
         case 'photo_yes':
             await callback.message.edit_text(text = 'Отправь мне фотографию')
             await MessageInfo.fill_photo.set()
+        case 'go_back_to_name':
+            await MessageInfo.fill_name.set()
+            await callback.message.answer(text = 'Введи имя отправителя')
         case 'go_back_to_text':
-            await callback.message.edit_text(text = 'text')
+            await MessageInfo.fill_message.set()
+            await callback.message.answer(text = 'Введи текст сообщения')
+        case 'go_back_to_mail':
+            await MessageInfo.fill_mail.set()
+            await callback.message.answer(text = 'Введи почту')
+
 
 
 @dp.message_handler(lambda message: message.text.isalpha() and len(message.text)>1, state = MessageInfo.fill_name) #получение и обработка имени
 async def get_user_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['name'] = message.text
-    await message.answer(text='Приятно познакомиться!\n\nА теперь введи текст')
+    keyboard_back: InlineKeyboardMarkup = InlineKeyboardMarkup()
+    button_back: InlineKeyboardButton = InlineKeyboardButton(text="<<", callback_data = 'go_back_to_name')
+    keyboard_back.add(button_back)
+    await message.answer(text='Приятно познакомиться!\n\nА теперь введи текст', reply_markup = keyboard_back)
     await MessageInfo.fill_message.set()
 
 @dp.message_handler(state = MessageInfo.fill_message) #получение и обработка текста
@@ -94,7 +104,8 @@ async def get_user_mail(message: types.Message, state: FSMContext):
     skeyboard: InlineKeyboardMarkup = InlineKeyboardMarkup()
     sbutton_1: InlineKeyboardButton = InlineKeyboardButton(text="Да", callback_data = 'photo_yes')
     sbutton_2: InlineKeyboardButton = InlineKeyboardButton(text="Нет", callback_data = 'photo_no')
-    skeyboard.add(sbutton_1, sbutton_2)
+    sbutton_3: InlineKeyboardButton = InlineKeyboardButton(text="<<", callback_data = 'go_back_to_mail')
+    skeyboard.add(sbutton_1, sbutton_2).add(sbutton_3)
     await message.answer(text='Сделано!\n\nНужно ли отправить фотографию?', reply_markup=skeyboard)
 
 @dp.message_handler(commands = ['help']) #функция для хелпа (пока хз зачем)
