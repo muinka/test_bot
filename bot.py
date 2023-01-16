@@ -85,7 +85,7 @@ async def get_callback(callback: types.CallbackQuery):
             await MessageInfo.fill_mail.set()
             await callback.message.answer(text = 'Введи почту\n\nЧтобы отменить заполнение, введи\n/cancel')
 
-@dp.message_handler(lambda message: message.text.isalpha() and len(message.text)>1, state = MessageInfo.fill_name) #получение и обработка имени
+@dp.message_handler(lambda message: message.text.replace(" ","").isalpha() and len(message.text)>1, state = MessageInfo.fill_name) #получение и обработка имени
 async def get_user_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['user_id'] = message.from_user.id
@@ -155,7 +155,7 @@ async def get_text(message: types.Message):
 
 async def gmail_send(test_dict):
     try:
-        new_text = f'От: {test_dict["name"]}\n\n{test_dict["message"]}\n\nСообщение отправлено с помощью телеграм бота t.me/samiy_tupoi_bot'
+        new_text = f'От: {test_dict["name"]}\n\n{test_dict["message"]}\n\nСообщение отправлено с помощью Telegram бота\nt.me/samiy_tupoi_bot'
         new_text = MIMEText(new_text, 'plain', 'utf-8')
         new_text['Subject'] = Header('Message from Telegram bot','utf-8')
         server = smtplib.SMTP('smtp.gmail.com', 587) #подключение к почте
