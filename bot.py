@@ -40,16 +40,16 @@ async def set_main_menu(dp: Dispatcher):
     ]
     await dp.bot.set_my_commands(main_menu_commands)
 
-@dp.message_handler(commands = ['start']) #приветствие пользователя
+#приветствие пользователя
 async def send_start_message(message: types.Message):
     name = message.from_user.first_name
     await message.answer(text = f'Привет, {name}\n\nЧтобы начать работу, введи /send')
 
-@dp.message_handler(commands = ['help'], state = '*') #функция для хелпа (пока хз зачем)
+ #функция для хелпа (пока хз зачем)
 async def send_help_message(message: types.Message, state: FSMContext):
     await message.answer(text = 'Пока ничем помочь не могу')
 
-@dp.message_handler(commands = ['cancel'], state = '*')
+#функция отмены отправки сообщения
 async def cancel_command(message: types.Message, state: FSMContext):
     if await state.get_state() == None:
         await message.answer(text = 'Ты не начал заполнение формы\n\nЧтобы заполнить форму, введи /send')
@@ -57,14 +57,14 @@ async def cancel_command(message: types.Message, state: FSMContext):
         await message.answer(text = 'Ты вышел из отправки сообщений\n\nЧтобы заново заполнить форму, введи\n/send')
         await state.reset_state()
 
-@dp.message_handler(commands = ['send']) #начало заполнения анкеты
+#начало заполнения анкеты
 async def form_start(message: types.Message):
     keyboard: InlineKeyboardMarkup = InlineKeyboardMarkup()
     button_1: InlineKeyboardButton = InlineKeyboardButton(text="Поехали", callback_data = 'first_step')
     keyboard.add(button_1)
     await message.answer(text = 'Я умею отправлять сообщения на почту, начнем?', reply_markup=keyboard)
 
-@dp.callback_query_handler(state = '*') #хэндлер коллбеков
+#Обработка коллбеков
 async def get_callback(callback: types.CallbackQuery):
     match callback.data:
         case 'first_step':
@@ -85,7 +85,7 @@ async def get_callback(callback: types.CallbackQuery):
             await MessageInfo.fill_mail.set()
             await callback.message.answer(text = 'Введи почту\n\nЧтобы отменить заполнение, введи\n/cancel')
 
-@dp.message_handler(lambda message: message.text.replace(" ","").isalpha() and len(message.text)>1, state = MessageInfo.fill_name) #получение и обработка имени
+#получение и обработка имени
 async def get_user_name(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['user_id'] = message.from_user.id
@@ -96,7 +96,7 @@ async def get_user_name(message: types.Message, state: FSMContext):
     await message.answer(text='Приятно познакомиться!\n\nА теперь введи текст\n\nЧтобы отменить заполнение, введи\n/cancel', reply_markup = keyboard_back)
     await MessageInfo.fill_message.set()
 
-@dp.message_handler(state = MessageInfo.fill_message) #получение и обработка текста
+#получение и обработка текста
 async def get_user_message(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['message'] = message.text
@@ -106,7 +106,7 @@ async def get_user_message(message: types.Message, state: FSMContext):
     await message.answer(text='Супер!\n\nОтправляй почту',reply_markup = keyboard_back)
     await MessageInfo.fill_mail.set()
 
-@dp.message_handler(lambda message: validation.isValid(message.text), state = MessageInfo.fill_mail) #получение и обработка почты
+#получение и обработка почты
 async def get_user_mail(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['mail'] = message.text
@@ -120,8 +120,7 @@ async def get_user_mail(message: types.Message, state: FSMContext):
     await gmail_send(test_dict)
     await message.answer(text='Сделано!\n\nНужно ли отправить фотографию?\n\nЧтобы отменить заполнение, введи\n/cancel', reply_markup=skeyboard)
 
-
-@dp.message_handler(content_types = ['photo'], state = MessageInfo.fill_photo) #функция дли обработки фоток
+#функция дли обработки фоток
 async def get_user_photo(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     photo_id = message.photo[2].file_id
@@ -136,19 +135,19 @@ async def get_user_photo(message: types.Message, state: FSMContext):
     except Exception as error:
         print(str(error))
 
-@dp.message_handler(content_types = 'any', state = MessageInfo.fill_photo) #проверка фотографии
+#проверка фотографии
 async def check_photo(message: types.Message):
     await message.reply(text = 'Это не фотография, пришли фотографию\n\nЧтобы отменить заполнение, введи\n/cancel')
 
-@dp.message_handler(content_types='any', state = MessageInfo.fill_name) #проверка имени
+#проверка имени
 async def check_name(message: types.Message):
     await message.reply(text = 'Что-то не похоже на имя\n\nЧтобы отменить заполнение, введи\n/cancel')
 
-@dp.message_handler(state = MessageInfo.fill_mail) #проверка почты
+#проверка почты
 async def check_mail(message: types.Message):
     await message.reply(text = 'Почта введена некорректно\n\nЧтобы отменить заполнение, введи\n/cancel')
 
-@dp.message_handler(content_types = ['any'])
+#остальные запросы
 async def get_text(message: types.Message):
     text = message.text
     await message.answer(text = 'Выбери команду, которая тебе нужна')
@@ -189,6 +188,33 @@ async def database(test_dict):
         if connection:
             connection.close()
             print('[INFO] PostgreSQL connection closed')
+
+#регистрируем хэндлеры
+dp.register_message_handler(send_start_message, commands='start')
+
+dp.register_message_handler(send_help_message, commands='help', state='*')
+
+dp.register_message_handler(cancel_command,commands='cancel',state='*')
+
+dp.register_message_handler(form_start,commands='send')
+
+dp.register_callback_query_handler(get_callback, state='*')
+
+dp.register_message_handler(get_user_name,lambda message: message.text.replace(" ","").isalpha() and len(message.text)>1, state = MessageInfo.fill_name )
+
+dp.register_message_handler(get_user_message, state = MessageInfo.fill_message)
+
+dp.register_message_handler(get_user_mail, lambda message: validation.isValid(message.text), state = MessageInfo.fill_mail)
+
+dp.register_message_handler(get_user_photo,content_types = ['photo'], state = MessageInfo.fill_photo)
+
+dp.register_message_handler(check_photo, content_types = 'any', state = MessageInfo.fill_photo)
+
+dp.register_message_handler(check_name, content_types='any', state = MessageInfo.fill_name)
+
+dp.register_message_handler(check_mail,state = MessageInfo.fill_mail)
+
+dp.register_message_handler(get_text,content_types = ['any'])
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=set_main_menu)
