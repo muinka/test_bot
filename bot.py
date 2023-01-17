@@ -5,6 +5,8 @@ from aiogram.dispatcher.filters.state import State, StatesGroup
 from aiogram.dispatcher import FSMContext
 from environs import Env
 from email.mime.text import MIMEText
+from email.mime.multipart import MIMEMultipart
+from email.mime.application import MIMEApplication
 from email.header import Header
 import psycopg2
 import smtplib
@@ -65,13 +67,16 @@ async def form_start(message: types.Message):
     await message.answer(text = 'Я умею отправлять сообщения на почту, начнем?', reply_markup=keyboard)
 
 #Обработка коллбеков
-async def get_callback(callback: types.CallbackQuery):
+async def get_callback(callback: types.CallbackQuery, state: FSMContext):
+    user_dict = await state.get_data()
     match callback.data:
         case 'first_step':
             await callback.message.edit_text(text = 'Напиши имя отправителя\n\nЧтобы отменить заполнение, введи\n/cancel')
             await MessageInfo.fill_name.set()
         case 'photo_no':  #добавить config с строками
+            await gmail_send(user_dict)
             await callback.message.edit_text(text = 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
+            await state.finish()
         case 'photo_yes':
             await callback.message.edit_text(text = 'Отправь мне фотографию\n\nЧтобы отменить заполнение, введи\n/cancel')
             await MessageInfo.fill_photo.set()
@@ -110,25 +115,24 @@ async def get_user_message(message: types.Message, state: FSMContext):
 async def get_user_mail(message: types.Message, state: FSMContext):
     async with state.proxy() as data:
         data['mail'] = message.text
-    test_dict = await state.get_data()
-    await state.finish()
     skeyboard: InlineKeyboardMarkup = InlineKeyboardMarkup()
     sbutton_1: InlineKeyboardButton = InlineKeyboardButton(text="Да", callback_data = 'photo_yes')
     sbutton_2: InlineKeyboardButton = InlineKeyboardButton(text="Нет", callback_data = 'photo_no')
     sbutton_3: InlineKeyboardButton = InlineKeyboardButton(text="<<", callback_data = 'go_back_to_mail')
     skeyboard.add(sbutton_1, sbutton_2).add(sbutton_3)
-    await gmail_send(test_dict)
     await message.answer(text='Сделано!\n\nНужно ли отправить фотографию?\n\nЧтобы отменить заполнение, введи\n/cancel', reply_markup=skeyboard)
 
 #функция дли обработки фоток
 async def get_user_photo(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
     photo_id = message.photo[2].file_id
+    user_dict = await state.get_data()
     try:
         file = await bot.get_file(photo_id)
         file_path = file.file_path
         await bot.download_file(file_path, 'photo.jpg')
         photo = open('photo.jpg', 'rb')
+        await gmail_send(user_dict, image = 'photo.jpg')
         #await bot.send_photo(user_id, photo) для теста, получается ли фотка нормально
         await bot.send_message(user_id, 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
         await state.finish()
@@ -152,22 +156,31 @@ async def get_text(message: types.Message):
     text = message.text
     await message.answer(text = 'Выбери команду, которая тебе нужна')
 
-async def gmail_send(test_dict):
+async def gmail_send(user_dict,image = 0):
     try:
-        new_text = f'От: {test_dict["name"]}\n\n{test_dict["message"]}\n\nСообщение отправлено с помощью Telegram бота\nt.me/samiy_tupoi_bot'
+        mes = MIMEMultipart()
+        new_text = f'От: {user_dict["name"]}\n\n{user_dict["message"]}\n\nСообщение отправлено с помощью Telegram бота\nt.me/samiy_tupoi_bot'
         new_text = MIMEText(new_text, 'plain', 'utf-8')
         new_text['Subject'] = Header('Message from Telegram bot','utf-8')
+        mes.attach(new_text)
+        if image == 0:
+            pass
+        else:
+            with open(image,'rb') as file:
+                img=MIMEApplication(file.read())
+            img['Content-Disposition'] = 'attachment; filename="Photo.jpg"'
+            mes.attach(img)
         server = smtplib.SMTP('smtp.gmail.com', 587) #подключение к почте
         server.starttls()
         server.login(mail_login ,mail_password)
-        server.sendmail(mail_login,test_dict['mail'],new_text.as_string())
+        server.sendmail(mail_login,user_dict['mail'],mes.as_string())
         server.quit()
         print('[INFO] Message was sended')
-        await database(test_dict)
+        await database(user_dict)
     except Exception as er:
         print('[INFO] Error while sending message', er)
 
-async def database(test_dict):
+async def database(user_dict):
     try:
         connection = psycopg2.connect( #подключение к БД
         host = config.host,
@@ -180,7 +193,7 @@ async def database(test_dict):
             cursor.execute('SELECT VERSION()')
             print(cursor.fetchone())
         with connection.cursor() as cursor:
-            cursor.execute(f"INSERT INTO users (user_id, user_name, user_text, user_mail) VALUES ({test_dict['user_id']},'{test_dict['name']}','{test_dict['message']}', '{test_dict['mail']}');")
+            cursor.execute(f"INSERT INTO users (user_id, user_name, user_text, user_mail) VALUES ({user_dict['user_id']},'{user_dict['name']}','{user_dict['message']}', '{user_dict['mail']}');")
             print('[INFO] Data was added')
     except Exception as er:
         print('[INFO] Error while working with PostgreSQL', er)
@@ -206,7 +219,7 @@ dp.register_message_handler(get_user_message, state = MessageInfo.fill_message)
 
 dp.register_message_handler(get_user_mail, lambda message: validation.isValid(message.text), state = MessageInfo.fill_mail)
 
-dp.register_message_handler(get_user_photo,content_types = ['photo'], state = MessageInfo.fill_photo)
+dp.register_message_handler(get_user_photo,content_types = 'photo', state = MessageInfo.fill_photo)
 
 dp.register_message_handler(check_photo, content_types = 'any', state = MessageInfo.fill_photo)
 
@@ -214,7 +227,7 @@ dp.register_message_handler(check_name, content_types='any', state = MessageInfo
 
 dp.register_message_handler(check_mail,state = MessageInfo.fill_mail)
 
-dp.register_message_handler(get_text,content_types = ['any'])
+dp.register_message_handler(get_text,content_types = 'any')
 
 if __name__ == '__main__':
     executor.start_polling(dp, skip_updates=True, on_startup=set_main_menu)
