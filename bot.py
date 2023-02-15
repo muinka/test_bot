@@ -1,24 +1,12 @@
-from aiogram import Bot, Dispatcher, executor, types
-from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton, Message, CallbackQuery
-from aiogram.contrib.fsm_storage.memory import MemoryStorage
-from aiogram.dispatcher.filters.state import State, StatesGroup
-from aiogram.dispatcher import FSMContext
-from environs import Env
-from email.mime.text import MIMEText
-from email.mime.multipart import MIMEMultipart
-from email.mime.application import MIMEApplication
-from email.header import Header
-import psycopg2
-import smtplib
-
+from config import *
 import validation
-import config
+import create_db
 
 env = Env()
 env.read_env()
 TOKEN = env('TOKEN')
 mail_login = env('login')
-mail_password = env('password')
+mail_password = env('mail_key')
 host = env('host')
 user = env('user')
 db_pass = env('password')
@@ -28,6 +16,8 @@ storage: MemoryStorage = MemoryStorage()
 
 bot = Bot(token = TOKEN)
 dp = Dispatcher(bot = bot, storage = storage)
+
+logging.basicConfig(level=logging.INFO, filename="py_log.log",filemode="a", format="%(asctime)s %(levelname)s %(message)s")
 
 test_dict: dict[str,str] = {} #словарь с данными
 
@@ -135,7 +125,7 @@ async def get_user_photo(message: types.Message, state: FSMContext):
         file = await bot.get_file(photo_id)
         file_path = file.file_path
         await bot.download_file(file_path, f'photo{user_id}.jpg')
-        photo = open('photo.jpg', 'rb')
+        #photo = open('photo.jpg', 'rb')
         await gmail_send(user_dict, image = f'photo{user_id}.jpg')
         #await bot.send_photo(user_id, photo) для теста, получается ли фотка нормально
         await bot.send_message(user_id, 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
@@ -157,7 +147,6 @@ async def check_mail(message: types.Message):
 
 #остальные запросы
 async def get_text(message: types.Message):
-    text = message.text
     await message.answer(text = 'Выбери команду, которая тебе нужна')
 
 async def gmail_send(user_dict,image = 0):
@@ -165,7 +154,8 @@ async def gmail_send(user_dict,image = 0):
         mes = MIMEMultipart()
         new_text = f'От: {user_dict["name"]}\n\n{user_dict["message"]}\n\nСообщение отправлено с помощью Telegram бота\nt.me/samiy_tupoi_bot'
         new_text = MIMEText(new_text, 'plain', 'utf-8')
-        new_text['Subject'] = Header('Message from Telegram bot','utf-8')
+        mes['From'] = 'Mail Sender Bot'
+        mes['Subject'] = 'Message from Telegram bot'
         mes.attach(new_text)
         if image == 0:
             pass
@@ -179,32 +169,32 @@ async def gmail_send(user_dict,image = 0):
         server.login(mail_login ,mail_password)
         server.sendmail(mail_login,user_dict['mail'],mes.as_string())
         server.quit()
-        print('[INFO] Message was sended')
-        await database(user_dict)
+        logging.info('Message was sended')
+        create_db.insert(user_dict)
     except Exception as er:
-        print('[INFO] Error while sending message', er)
+        logging.error('Error while sending message', er)
 
-async def database(user_dict):
-    try:
-        connection = psycopg2.connect( #подключение к БД
-        host,
-        user,
-        db_pass,
-        db_name
-        )
-        connection.autocommit = True
-        with connection.cursor() as cursor:
-            cursor.execute('SELECT VERSION()')
-            print(cursor.fetchone())
-        with connection.cursor() as cursor:
-            cursor.execute(f"INSERT INTO users (user_id, user_name, user_text, user_mail) VALUES ({user_dict['user_id']},'{user_dict['name']}','{user_dict['message']}', '{user_dict['mail']}');")
-            print('[INFO] Data was added')
-    except Exception as er:
-        print('[INFO] Error while working with PostgreSQL', er)
-    finally:
-        if connection:
-            connection.close()
-            print('[INFO] PostgreSQL connection closed')
+# async def database(user_dict):
+#     try:
+#         connection = psycopg2.connect( #подключение к БД
+#         host = host,
+#         user = user,
+#         password = db_pass,
+#         database = db_name
+#         )
+#         connection.autocommit = True
+#         with connection.cursor() as cursor:
+#             cursor.execute('SELECT VERSION()')
+#             print(cursor.fetchone())
+#         with connection.cursor() as cursor:
+#             cursor.execute(f"INSERT INTO users (user_id, user_name, user_text, user_mail) VALUES ({user_dict['user_id']},'{user_dict['name']}','{user_dict['message']}', '{user_dict['mail']}');")
+#             print('[INFO] Data was added')
+#     except Exception as er:
+#         print('[INFO] Error while working with PostgreSQL', er)
+#     finally:
+#         if connection:
+#             connection.close()
+#             print('[INFO] PostgreSQL connection closed')
 
 #регистрируем хэндлеры
 dp.register_message_handler(send_start_message, commands='start')
@@ -221,7 +211,7 @@ dp.register_message_handler(get_user_name,lambda message: message.text.replace("
 
 dp.register_message_handler(get_user_message, state = MessageInfo.fill_message)
 
-dp.register_message_handler(get_user_mail, lambda message: validation.isValid(message.text), state = MessageInfo.fill_mail)
+dp.register_message_handler(get_user_mail, lambda message: validation.isvalid(message.text), state = MessageInfo.fill_mail)
 
 dp.register_message_handler(get_user_photo,content_types = 'photo', state = MessageInfo.fill_photo)
 

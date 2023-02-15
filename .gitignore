@@ -6,3 +6,4 @@ __pycache__
 .mypy_cache
 test.py
 config.py
+py_log.log
