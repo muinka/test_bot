@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  db:
+    container_name: db
+    ports:
+      - '5432:5432'
+    environment:
+      - POSTGRES_USERNAME=postgres
+      - POSTGRES_PASSWORD=Us2001us
+      - POSTGRES_DB=base
+    image: postgres:14.7
+  bot:
+    container_name: bot
+    build: .

@@ -1,6 +1,7 @@
 from config import *
 import validation
 import create_db
+import send_mail
 
 env = Env()
 env.read_env()
@@ -18,8 +19,6 @@ bot = Bot(token = TOKEN)
 dp = Dispatcher(bot = bot, storage = storage)
 
 logging.basicConfig(level=logging.INFO, filename="py_log.log",filemode="a", format="%(asctime)s %(levelname)s %(message)s")
-
-test_dict: dict[str,str] = {} #словарь с данными
 
 class MessageInfo(StatesGroup): #состояние данных пользователя
     null_state = State()
@@ -41,7 +40,7 @@ async def send_start_message(message: types.Message):
     name = message.from_user.first_name
     await message.answer(text = f'Привет, {name}\n\nЧтобы начать работу, введи /send')
 
- #функция для хелпа (пока хз зачем)
+#функция для хелпа (пока хз зачем)
 async def send_help_message(message: types.Message, state: FSMContext):
     await message.answer(text = 'Пока ничем помочь не могу')
 
@@ -68,7 +67,8 @@ async def get_callback(callback: types.CallbackQuery, state: FSMContext):
             await callback.message.edit_text(text = 'Напиши имя отправителя\n\nЧтобы отменить заполнение, введи\n/cancel')
             await MessageInfo.fill_name.set()
         case 'photo_no':  #добавить config с строками
-            await gmail_send(user_dict)
+            flag = True
+            send_mail.no_photo(user_dict,flag)
             await callback.message.edit_text(text = 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
             await state.finish()
         case 'photo_yes':
@@ -119,19 +119,14 @@ async def get_user_mail(message: types.Message, state: FSMContext):
 #функция дли обработки фоток
 async def get_user_photo(message: types.Message, state: FSMContext):
     user_id = message.from_user.id
-    photo_id = message.photo[2].file_id
     user_dict = await state.get_data()
-    try:
-        file = await bot.get_file(photo_id)
-        file_path = file.file_path
-        await bot.download_file(file_path, f'photo{user_id}.jpg')
-        #photo = open('photo.jpg', 'rb')
-        await gmail_send(user_dict, image = f'photo{user_id}.jpg')
-        #await bot.send_photo(user_id, photo) для теста, получается ли фотка нормально
-        await bot.send_message(user_id, 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
-        await state.finish()
-    except Exception as error:
-        print(str(error))
+    await message.photo[-1].download(destination_file=f'photos/{user_id}/photo.jpg')
+    flag = True
+    logging.info('Data saved')
+    send_mail.with_photo(user_dict, flag)
+    #await bot.send_photo(user_id, photo) для теста, получается ли фотка нормально
+    await bot.send_message(user_id, 'Сообщение отправлено, чтобы вернуться в начало, введи /send')
+    await state.finish()
 
 #проверка фотографии
 async def check_photo(message: types.Message):
@@ -148,53 +143,6 @@ async def check_mail(message: types.Message):
 #остальные запросы
 async def get_text(message: types.Message):
     await message.answer(text = 'Выбери команду, которая тебе нужна')
-
-async def gmail_send(user_dict,image = 0):
-    try:
-        mes = MIMEMultipart()
-        new_text = f'От: {user_dict["name"]}\n\n{user_dict["message"]}\n\nСообщение отправлено с помощью Telegram бота\nt.me/samiy_tupoi_bot'
-        new_text = MIMEText(new_text, 'plain', 'utf-8')
-        mes['From'] = 'Mail Sender Bot'
-        mes['Subject'] = 'Message from Telegram bot'
-        mes.attach(new_text)
-        if image == 0:
-            pass
-        else:
-            with open(image,'rb') as file:
-                img=MIMEApplication(file.read())
-            img['Content-Disposition'] = 'attachment; filename="Photo.jpg"'
-            mes.attach(img)
-        server = smtplib.SMTP('smtp.gmail.com', 587) #подключение к почте
-        server.starttls()
-        server.login(mail_login ,mail_password)
-        server.sendmail(mail_login,user_dict['mail'],mes.as_string())
-        server.quit()
-        logging.info('Message was sended')
-        create_db.insert(user_dict)
-    except Exception as er:
-        logging.error('Error while sending message', er)
-
-# async def database(user_dict):
-#     try:
-#         connection = psycopg2.connect( #подключение к БД
-#         host = host,
-#         user = user,
-#         password = db_pass,
-#         database = db_name
-#         )
-#         connection.autocommit = True
-#         with connection.cursor() as cursor:
-#             cursor.execute('SELECT VERSION()')
-#             print(cursor.fetchone())
-#         with connection.cursor() as cursor:
-#             cursor.execute(f"INSERT INTO users (user_id, user_name, user_text, user_mail) VALUES ({user_dict['user_id']},'{user_dict['name']}','{user_dict['message']}', '{user_dict['mail']}');")
-#             print('[INFO] Data was added')
-#     except Exception as er:
-#         print('[INFO] Error while working with PostgreSQL', er)
-#     finally:
-#         if connection:
-#             connection.close()
-#             print('[INFO] PostgreSQL connection closed')
 
 #регистрируем хэндлеры
 dp.register_message_handler(send_start_message, commands='start')

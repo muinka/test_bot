@@ -10,8 +10,12 @@ meta = MetaData()
 en = Env()
 en.read_env()
 db_url = en('db_url')
+engine = create_engine(db_url)
+conn = engine.connect()
+
 users = Table('users', meta, Column('user_id', Integer),
 Column('user_name', String), Column('user_text', String), Column('user_mail', String))
+meta.create_all(engine)
 
 try:
     engine = create_engine(db_url)
