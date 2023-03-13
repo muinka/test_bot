@@ -1,1 +1,2 @@
-Test
+Telegram Bot
+To start send '/start'
